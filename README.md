@@ -278,13 +278,7 @@ MIT License - feel free to use for educational purposes.
 
 ---
 
-## 🙏 Acknowledgments
 
-- B.S. Abdur Rahman Crescent Institute of Science and Technology
-- Department of AI & Data Science
-- All students who provided sample reports for validation rule development
-
----
 
 <p align="center">
   <b>Built with ❤️ for Crescent Institute Students</b>
