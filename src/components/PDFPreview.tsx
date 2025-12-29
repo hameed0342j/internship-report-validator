@@ -8,10 +8,8 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 // Worker is already set globally in pdf-analyzer.ts, but react-pdf might need it too?
 // Usually sharing the worker source is enough.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-).toString();
+// Use the same CDN worker as pdf-analyzer to ensure version match
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
 
 interface PDFPreviewProps {
     file: File;

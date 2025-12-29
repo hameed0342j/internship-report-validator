@@ -91,7 +91,13 @@ export class PDFAnalyzer {
                 isMainHeadingCentered = true;
             } else {
                 // Only strict check for specific known headings
-                const isKnownHeading = REPORT_RULES.pageStructure.some(r => r.page === pageIndex);
+                const isKnownHeading = REPORT_RULES.pageStructure.some(r => {
+                    const [start, end] = r.pageRange || [0, 0];
+                    // pageIndex is 1-based (from PDF), ranges are 0-based (array index)
+                    // So we check if (pageIndex - 1) is within [start, end]
+                    return (pageIndex - 1) >= start && (pageIndex - 1) <= end;
+                });
+
                 if (isKnownHeading || /^CHAPTER/i.test(firstItem.str)) {
                     errors.push({
                         type: 'CENTERING',
@@ -112,116 +118,26 @@ export class PDFAnalyzer {
         // Group into lines (fuzzy Y)
         const lines = this.groupIntoLines(visibleItems);
 
-        // Check lines for border violation - use warnings instead of errors for minor issues
-        let borderWarnings = 0;
+        // Check lines for border violation
         lines.forEach(line => {
             const lineStart = line.items[0].x;
             const lineEnd = line.items[line.items.length - 1].x + line.items[line.items.length - 1].width;
 
-            // Only flag severe border violations as errors (outside by more than 20 units)
-            if (lineStart < leftMarginX - 20) {
-                errors.push({ type: 'BORDER', message: 'Text significantly outside left margin', pageIndex, severity: 'ERROR' });
-            } else if (lineStart < leftMarginX - 5 && borderWarnings < 2) {
-                borderWarnings++;
-                // Minor margin issues - just warnings, not errors
+            if (lineStart < leftMarginX - 10) { // Tolerance
+                errors.push({ type: 'BORDER', message: 'Text outside left margin', pageIndex, severity: 'ERROR' });
             }
-            if (lineEnd > pageWidth - (REPORT_RULES.layout.pageBorderMargin - 20)) {
-                errors.push({ type: 'BORDER', message: 'Text significantly outside right margin', pageIndex, severity: 'ERROR' });
+            if (lineEnd > pageWidth - (REPORT_RULES.layout.pageBorderMargin - 10)) {
+                errors.push({ type: 'BORDER', message: 'Text outside right margin', pageIndex, severity: 'ERROR' });
             }
         });
 
-        // 4. Justification Check for Paragraphs
-        // Check if paragraph lines (not headings) are justified (aligned on both left and right)
-        const justificationResult = this.checkJustification(lines, pageWidth, pageIndex);
-        if (justificationResult.warning) {
-            warnings.push(justificationResult.warning);
-        }
+        // Justification check (Simplified)
+        // We check if "long lines" end at roughly the same X position (the right margin)
+        // If we see jagged edges on the right for long lines, it's likely left-aligned.
+        // This is hard to perfect without knowing paragraph breaks.
+        // Warning only.
 
         return { errors, warnings, isMainHeadingCentered, isMainHeadingAtTop };
-    }
-
-    /**
-     * Check if paragraphs are justified (aligned on both margins)
-     * Ignores headings and subheadings (all caps, short lines, chapter markers)
-     */
-    private checkJustification(
-        lines: { y: number; items: TextItem[] }[],
-        pageWidth: number,
-        pageIndex: number
-    ): { isJustified: boolean; warning?: string } {
-        const rightMargin = pageWidth - REPORT_RULES.layout.pageBorderMargin;
-        const leftMargin = REPORT_RULES.layout.pageBorderMargin;
-        const tolerance = 15; // PDF units tolerance for alignment
-
-        // Filter out heading lines (all caps, short, chapter markers, centered)
-        const paragraphLines = lines.filter(line => {
-            const lineText = line.items.map(i => i.str).join('').trim();
-            const lineStart = line.items[0]?.x || 0;
-            const lineEnd = (line.items[line.items.length - 1]?.x || 0) + 
-                           (line.items[line.items.length - 1]?.width || 0);
-            const lineWidth = lineEnd - lineStart;
-            
-            // Skip if:
-            // 1. All caps (likely heading)
-            const isAllCaps = lineText === lineText.toUpperCase() && lineText.length > 3;
-            // 2. Starts with CHAPTER, FIGURE, TABLE (headings)
-            const isHeading = /^(CHAPTER|FIGURE|TABLE|LIST OF|ABSTRACT|ACKNOWLEDGEMENT|BONAFIDE|CERTIFICATE|CONCLUSION|REFERENCE)/i.test(lineText);
-            // 3. Very short lines (less than 40% of page width - likely headings or last lines)
-            const isShort = lineWidth < (pageWidth - 2 * leftMargin) * 0.4;
-            // 4. Centered text (heading indicator)
-            const pageCenter = pageWidth / 2;
-            const lineCenter = lineStart + lineWidth / 2;
-            const isCentered = Math.abs(pageCenter - lineCenter) < 50;
-            // 5. Numbered items like "1.", "1.1", etc.
-            const isNumberedItem = /^\d+\.(\d+)?/.test(lineText);
-
-            return !isAllCaps && !isHeading && !isShort && !isCentered && !isNumberedItem;
-        });
-
-        if (paragraphLines.length < 3) {
-            // Not enough paragraph lines to check
-            return { isJustified: true };
-        }
-
-        // Check if paragraph lines align on both margins
-        let alignedRight = 0;
-        let alignedLeft = 0;
-        let totalChecked = 0;
-
-        paragraphLines.forEach(line => {
-            const lineStart = line.items[0]?.x || 0;
-            const lineEnd = (line.items[line.items.length - 1]?.x || 0) + 
-                           (line.items[line.items.length - 1]?.width || 0);
-
-            // Check left alignment (should be consistent)
-            if (Math.abs(lineStart - leftMargin) < tolerance * 2) {
-                alignedLeft++;
-            }
-
-            // Check right alignment (should reach near right margin for justified text)
-            if (Math.abs(lineEnd - rightMargin) < tolerance * 3) {
-                alignedRight++;
-            }
-
-            totalChecked++;
-        });
-
-        // Calculate justification percentage
-        const rightAlignmentRatio = alignedRight / totalChecked;
-        const leftAlignmentRatio = alignedLeft / totalChecked;
-
-        // Consider justified if >60% of paragraph lines reach near the right margin
-        // and >80% start near left margin
-        const isJustified = rightAlignmentRatio > 0.6 && leftAlignmentRatio > 0.8;
-
-        if (!isJustified && totalChecked > 5) {
-            return {
-                isJustified: false,
-                warning: `Page ${pageIndex}: Paragraphs may not be fully justified (${Math.round(rightAlignmentRatio * 100)}% right-aligned)`
-            };
-        }
-
-        return { isJustified: true };
     }
 
     private groupIntoLines(items: TextItem[]): { y: number, items: TextItem[] }[] {

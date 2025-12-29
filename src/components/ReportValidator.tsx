@@ -1,608 +1,367 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { FileUpload } from './FileUpload';
 import { ResultsView } from './ResultsView';
 import { PDFPreview } from './PDFPreview';
 import { Header } from './Header';
 import { Footer } from './Footer';
-import { BatchProcessor } from './BatchProcessor';
-import { PageAnalysisView } from './PageAnalysisView';
 import { PDFAnalyzer } from '../services/pdf-analyzer';
 import { DOCXAnalyzer } from '../services/docx-analyzer';
 import { Validator } from '../services/validator';
 import { WatermarkDetector } from '../services/watermark-detector';
 import type { AnalyzedPage, ValidationResult, WatermarkInfo } from '../types';
-import { 
-    ArrowLeft, Eye, BarChart3, Shield, FileCheck, BookOpen, 
-    CheckCircle2, XCircle, AlertTriangle, Sparkles, Zap,
-    FileText, TrendingUp, FolderOpen, FileSearch
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Toaster, toast } from '@/components/ui/sonner';
-import { 
-    Tooltip, 
-    TooltipContent, 
-    TooltipProvider, 
-    TooltipTrigger 
-} from '@/components/ui/tooltip';
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from "@/components/ui/accordion";
+import { ArrowLeft, Eye, BarChart3, Download, FileIcon } from 'lucide-react';
+
+interface ProcessedFile {
+    id: string;
+    file: File;
+    status: 'pending' | 'processing' | 'completed' | 'error';
+    result?: ValidationResult;
+    analyzedPages?: AnalyzedPage[];
+    error?: string;
+}
 
 export function ReportValidator() {
-    const [file, setFile] = useState<File | null>(null);
+    const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
+    const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-    const [analyzedPages, setAnalyzedPages] = useState<AnalyzedPage[]>([]);
-    const [progress, setProgress] = useState(0);
-    const [processingStage, setProcessingStage] = useState('');
-    const [mode, setMode] = useState<'single' | 'batch'>('single');
 
-    useEffect(() => {
-        if (isProcessing) {
-            const stages = [
-                { progress: 10, stage: 'Reading document...' },
-                { progress: 30, stage: 'Analyzing structure...' },
-                { progress: 50, stage: 'Detecting watermarks...' },
-                { progress: 70, stage: 'Validating content...' },
-                { progress: 90, stage: 'Generating report...' },
-            ];
-            
-            let currentIndex = 0;
-            const interval = setInterval(() => {
-                if (currentIndex < stages.length) {
-                    setProgress(stages[currentIndex].progress);
-                    setProcessingStage(stages[currentIndex].stage);
-                    currentIndex++;
-                }
-            }, 600);
-            
-            return () => clearInterval(interval);
-        } else {
-            setProgress(0);
-            setProcessingStage('');
-        }
-    }, [isProcessing]);
+    const handleFilesSelect = async (files: File[]) => {
+        const newFiles: ProcessedFile[] = files.map(f => ({
+            id: Math.random().toString(36).substring(7),
+            file: f,
+            status: 'pending'
+        }));
 
-    const handleFileSelect = async (selectedFile: File) => {
-        setFile(selectedFile);
+        setProcessedFiles(newFiles);
         setIsProcessing(true);
-        setValidationResult(null);
-        
-        toast.info('Processing Started', {
-            description: `Analyzing ${selectedFile.name}...`,
-        });
+        setSelectedFileId(null);
 
-        try {
-            let pages: AnalyzedPage[] = [];
-            let watermarkInfo: WatermarkInfo | undefined;
+        // Process files sequentially
+        for (let i = 0; i < newFiles.length; i++) {
+            const currentId = newFiles[i].id;
 
-            if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
-                const analyzer = new PDFAnalyzer();
-                pages = await analyzer.analyze(selectedFile);
-                
-                const watermarkDetector = new WatermarkDetector();
-                watermarkInfo = await watermarkDetector.detect(selectedFile);
-            } else if (selectedFile.name.toLowerCase().endsWith('.docx')) {
-                const analyzer = new DOCXAnalyzer();
-                pages = await analyzer.analyze(selectedFile);
+            setProcessedFiles(prev => prev.map(f =>
+                f.id === currentId ? { ...f, status: 'processing' } : f
+            ));
+
+            try {
+                let pages: AnalyzedPage[] = [];
+                let watermarkInfo: WatermarkInfo | undefined;
+                const file = newFiles[i].file;
+
+                if (file.name.toLowerCase().endsWith('.pdf')) {
+                    const analyzer = new PDFAnalyzer();
+                    pages = await analyzer.analyze(file);
+
+                    const watermarkDetector = new WatermarkDetector();
+                    watermarkInfo = await watermarkDetector.detect(file);
+                } else if (file.name.toLowerCase().endsWith('.docx')) {
+                    const analyzer = new DOCXAnalyzer();
+                    pages = await analyzer.analyze(file);
+                }
+
+                const validator = new Validator();
+                const result = validator.validate(pages, watermarkInfo, file.name);
+
+                setProcessedFiles(prev => prev.map(f =>
+                    f.id === currentId ? {
+                        ...f,
+                        status: 'completed',
+                        result,
+                        analyzedPages: pages
+                    } : f
+                ));
+
+            } catch (error) {
+                console.error(`Analysis failed for ${newFiles[i].file.name}`, error);
+                setProcessedFiles(prev => prev.map(f =>
+                    f.id === currentId ? { ...f, status: 'error', error: 'Analysis failed' } : f
+                ));
             }
-
-            setAnalyzedPages(pages);
-            setProgress(100);
-
-            const validator = new Validator();
-            const result = validator.validate(pages, watermarkInfo, selectedFile.name);
-            setValidationResult(result);
-
-            if (result.score >= 80) {
-                toast.success('Analysis Complete!', {
-                    description: `Score: ${result.score}% - Great job!`,
-                });
-            } else if (result.score >= 50) {
-                toast.warning('Analysis Complete', {
-                    description: `Score: ${result.score}% - Some issues found.`,
-                });
-            } else {
-                toast.error('Analysis Complete', {
-                    description: `Score: ${result.score}% - Significant issues detected.`,
-                });
-            }
-
-        } catch (error) {
-            console.error("Analysis failed", error);
-            toast.error('Analysis Failed', {
-                description: 'Failed to analyze file. Please try again.',
-            });
-        } finally {
-            setIsProcessing(false);
         }
+        setIsProcessing(false);
     };
 
     const reset = () => {
-        setFile(null);
-        setValidationResult(null);
-        setAnalyzedPages([]);
-        setProgress(0);
+        setProcessedFiles([]);
+        setSelectedFileId(null);
     };
 
-    const getScoreGradient = (score: number) => {
-        if (score >= 80) return 'from-green-500 to-emerald-500';
-        if (score >= 60) return 'from-yellow-500 to-orange-500';
-        return 'from-red-500 to-rose-500';
+    const downloadCSV = () => {
+        const headers = ['Filename', 'Status', 'Score', 'Errors', 'Warnings'];
+        const rows = processedFiles.map(f => [
+            `"${f.file.name}"`,
+            f.status,
+            f.result?.score || 0,
+            f.result?.errors.length || 0,
+            f.result?.warnings.length || 0
+        ].join(','));
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'internship_reports_validation.csv';
+        a.click();
+        window.URL.revokeObjectURL(url);
     };
+
+    const selectedFile = processedFiles.find(f => f.id === selectedFileId);
+
+    // Stats
+    const completedCount = processedFiles.filter(f => f.status === 'completed').length;
+    const passedCount = processedFiles.filter(f => f.status === 'completed' && f.result && f.result.score >= 80).length;
+    const avgScore = completedCount > 0
+        ? Math.round(processedFiles.reduce((acc, f) => acc + (f.result?.score || 0), 0) / completedCount)
+        : 0;
+    const progressPercent = processedFiles.length > 0
+        ? Math.round((processedFiles.filter(f => f.status !== 'pending').length / processedFiles.length) * 100)
+        : 0;
 
     return (
-        <TooltipProvider>
-            <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex flex-col">
-                <Toaster position="top-right" />
-                <Header />
+        <div className="min-h-screen bg-base-200 flex flex-col font-sans">
+            <Header />
 
-                <main className="flex-1">
-                    {!file ? (
-                        <div className="container mx-auto px-4 py-12 md:py-16 max-w-7xl">
-                            {/* Hero Section */}
-                            <div className="text-center mb-12 relative">
-                                <div className="absolute inset-0 -z-10 mx-auto max-w-4xl">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 blur-3xl rounded-full" />
-                                </div>
-                                
-                                <Badge variant="secondary" className="mb-4 gap-1">
-                                    <Sparkles className="h-3 w-3" />
-                                    AI-Powered Validation
-                                </Badge>
-                                
-                                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4 bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text">
-                                    Internship Report Validator
-                                </h1>
-                                
-                                <p className="text-muted-foreground text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-                                    Instantly validate your internship report against 
-                                    <span className="text-foreground font-medium"> B.S. Abdur Rahman Crescent Institute </span>
-                                    formatting standards.
-                                </p>
-                            </div>
-
-                            {/* Stats Bar */}
-                            <div className="flex justify-center gap-8 mb-12 flex-wrap">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <FileCheck className="h-4 w-4 text-green-500" />
-                                            <span><strong className="text-foreground">15+</strong> Validation Rules</span>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Structure, formatting, watermark checks</TooltipContent>
-                                </Tooltip>
-                                
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Zap className="h-4 w-4 text-yellow-500" />
-                                            <span><strong className="text-foreground">Instant</strong> Analysis</span>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Results in seconds</TooltipContent>
-                                </Tooltip>
-                                
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Shield className="h-4 w-4 text-blue-500" />
-                                            <span><strong className="text-foreground">RRN</strong> Watermark Verified</span>
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>12-digit registration number validation</TooltipContent>
-                                </Tooltip>
-                            </div>
-
-                            {/* Mode Selector */}
-                            <div className="flex justify-center mb-8">
-                                <div className="inline-flex rounded-lg border border-muted p-1 bg-muted/30">
-                                    <button
-                                        onClick={() => setMode('single')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                            mode === 'single' 
-                                                ? 'bg-background shadow text-foreground' 
-                                                : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                    >
-                                        <FileText className="h-4 w-4 inline mr-2" />
-                                        Single File
-                                    </button>
-                                    <button
-                                        onClick={() => setMode('batch')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                            mode === 'batch' 
-                                                ? 'bg-background shadow text-foreground' 
-                                                : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                    >
-                                        <FolderOpen className="h-4 w-4 inline mr-2" />
-                                        Batch Processing
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            {mode === 'single' ? (
-                                <>
-                                    <FileUpload onFileSelect={handleFileSelect} isProcessing={isProcessing} />
-
-                                    {/* Feature Cards */}
-                                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mt-16 max-w-6xl mx-auto">
-                                        <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-blue-200/50 dark:border-blue-900/50 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20">
-                                            <CardContent className="p-5">
-                                                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-3 group-hover:bg-blue-500/20 transition-colors">
-                                                    <BookOpen className="h-5 w-5 text-blue-500" />
-                                                </div>
-                                                <h3 className="font-semibold mb-1">Structure Check</h3>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Cover, Certificate, TOC, Abstract, Chapters
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                        
-                                        <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-green-200/50 dark:border-green-900/50 bg-gradient-to-br from-green-50/50 to-transparent dark:from-green-950/20">
-                                            <CardContent className="p-5">
-                                                <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center mb-3 group-hover:bg-green-500/20 transition-colors">
-                                                    <Shield className="h-5 w-5 text-green-500" />
-                                                </div>
-                                                <h3 className="font-semibold mb-1">RRN Watermark</h3>
-                                                <p className="text-xs text-muted-foreground">
-                                                    12-digit format with 20-25 year prefix
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                        
-                                        <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-purple-200/50 dark:border-purple-900/50 bg-gradient-to-br from-purple-50/50 to-transparent dark:from-purple-950/20">
-                                            <CardContent className="p-5">
-                                                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center mb-3 group-hover:bg-purple-500/20 transition-colors">
-                                                    <TrendingUp className="h-5 w-5 text-purple-500" />
-                                                </div>
-                                                <h3 className="font-semibold mb-1">Chapter Flow</h3>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Sequential chapter ordering validation
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                        
-                                        <Card className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-orange-200/50 dark:border-orange-900/50 bg-gradient-to-br from-orange-50/50 to-transparent dark:from-orange-950/20">
-                                            <CardContent className="p-5">
-                                                <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-colors">
-                                                    <FileText className="h-5 w-5 text-orange-500" />
-                                                </div>
-                                                <h3 className="font-semibold mb-1">Page Count</h3>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Minimum 30 pages requirement check
-                                                </p>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-
-                                    {/* How It Works */}
-                                    <div className="mt-20 max-w-4xl mx-auto">
-                                        <h2 className="text-2xl font-bold text-center mb-8">How It Works</h2>
-                                        <div className="grid md:grid-cols-3 gap-8">
-                                            <div className="text-center">
-                                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 text-xl font-bold text-primary">1</div>
-                                                <h3 className="font-semibold mb-2">Upload</h3>
-                                                <p className="text-sm text-muted-foreground">Drop your PDF or DOCX report</p>
-                                            </div>
-                                            <div className="text-center">
-                                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 text-xl font-bold text-primary">2</div>
-                                                <h3 className="font-semibold mb-2">Analyze</h3>
-                                                <p className="text-sm text-muted-foreground">AI scans structure & watermarks</p>
-                                            </div>
-                                            <div className="text-center">
-                                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 text-xl font-bold text-primary">3</div>
-                                                <h3 className="font-semibold mb-2">Results</h3>
-                                                <p className="text-sm text-muted-foreground">Get detailed validation report</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </>
-                            ) : (
-                                /* Batch Processing Mode */
-                                <div className="max-w-5xl mx-auto">
-                                    <BatchProcessor 
-                                        onExport={(results) => {
-                                            toast.success('Export Complete', {
-                                                description: `Exported ${results.length} results to CSV`,
-                                            });
-                                        }}
-                                    />
-                                    </div>
-                                )}
+            <main className="flex-1 w-full container mx-auto p-4 max-w-7xl animate-in fade-in duration-500">
+                {processedFiles.length === 0 ? (
+                    <div className="py-12 md:py-20 text-center space-y-8">
+                        <div>
+                            <h2 className="text-4xl font-bold tracking-tight mb-4 text-base-content">
+                                Validate Your Internship Reports
+                            </h2>
+                            <p className="text-lg text-base-content/70 max-w-2xl mx-auto">
+                                Upload a single report or an entire folder to check structure,
+                                watermark authentication, and formatting compliance.
+                            </p>
                         </div>
-                    ) : (
-                        <div className="container mx-auto px-4 py-6 max-w-7xl">
-                            {/* Header Bar */}
-                            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-                                <Button variant="ghost" onClick={reset} className="gap-2">
-                                    <ArrowLeft className="h-4 w-4" />
-                                    Upload New File
-                                </Button>
-                                
-                                <div className="flex items-center gap-3">
-                                    <Badge variant="outline" className="gap-1.5">
-                                        <FileText className="h-3 w-3" />
-                                        {file.name}
-                                    </Badge>
-                                    <Badge variant="secondary">
-                                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                                    </Badge>
+
+                        <div className="max-w-xl mx-auto">
+                            <div className="card bg-base-100 shadow-xl border-2 border-dashed border-base-300">
+                                <div className="card-body">
+                                    <FileUpload onFilesSelect={handleFilesSelect} isProcessing={isProcessing} />
                                 </div>
                             </div>
+                        </div>
 
-                            {isProcessing ? (
-                                /* Loading State */
-                                <div className="max-w-2xl mx-auto mt-12">
-                                    <Card className="overflow-hidden">
-                                        <CardContent className="p-8">
-                                            {/* Animated Processing Header */}
-                                            <div className="flex items-center justify-center mb-8">
-                                                <div className="relative">
-                                                    <div className="w-24 h-24 rounded-full border-4 border-muted" />
-                                                    <div className="absolute inset-0 w-24 h-24 rounded-full border-4 border-t-primary border-r-primary/50 animate-spin" />
-                                                    <div className="absolute inset-0 flex items-center justify-center">
-                                                        <span className="text-2xl font-bold">{progress}%</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            <h3 className="text-xl font-semibold text-center mb-2">
-                                                Analyzing Your Report
-                                            </h3>
-                                            <p className="text-muted-foreground text-center mb-6">
-                                                {processingStage || 'Initializing...'}
-                                            </p>
-                                            
-                                            <Progress value={progress} className="h-2 mb-6" />
-                                            
-                                            {/* Skeleton Preview */}
-                                            <div className="space-y-4 mt-8">
-                                                <div className="flex gap-4">
-                                                    <Skeleton className="h-4 w-4 rounded-full" />
-                                                    <Skeleton className="h-4 flex-1" />
-                                                </div>
-                                                <div className="flex gap-4">
-                                                    <Skeleton className="h-4 w-4 rounded-full" />
-                                                    <Skeleton className="h-4 flex-1" />
-                                                </div>
-                                                <div className="flex gap-4">
-                                                    <Skeleton className="h-4 w-4 rounded-full" />
-                                                    <Skeleton className="h-4 w-3/4" />
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                        <div className="grid md:grid-cols-3 gap-6 mt-16 max-w-4xl mx-auto text-left">
+                            <div className="card bg-base-100 shadow-lg hover:shadow-xl transition-all duration-300">
+                                <div className="card-body items-center text-center">
+                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+                                        <Eye className="h-6 w-6 text-primary" />
+                                    </div>
+                                    <h3 className="card-title text-base font-bold">Structure Analysis</h3>
+                                    <p className="text-sm text-base-content/70">Checks for Certificate, Abstract, TOC, and required sections</p>
                                 </div>
-                            ) : validationResult ? (
-                                /* Results View */
-                                <div className="space-y-6">
-                                    {/* Score Overview */}
-                                    <div className="grid md:grid-cols-4 gap-4">
-                                        <Card className="md:col-span-1">
-                                            <CardContent className="p-6 text-center">
-                                                <div className={`text-5xl font-bold mb-2 bg-gradient-to-r ${getScoreGradient(validationResult.score)} bg-clip-text text-transparent`}>
-                                                    {validationResult.score}%
-                                                </div>
-                                                <p className="text-sm text-muted-foreground">Overall Score</p>
-                                                <Progress 
-                                                    value={validationResult.score} 
-                                                    className="h-2 mt-3" 
+                            </div>
+                            <div className="card bg-base-100 shadow-lg hover:shadow-xl transition-all duration-300">
+                                <div className="card-body items-center text-center">
+                                    <div className="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center mb-2">
+                                        <BarChart3 className="h-6 w-6 text-secondary" />
+                                    </div>
+                                    <h3 className="card-title text-base font-bold">RRN Watermark</h3>
+                                    <p className="text-sm text-base-content/70">Validates 12-digit RRN with 20-25 year prefix</p>
+                                </div>
+                            </div>
+                            <div className="card bg-base-100 shadow-lg hover:shadow-xl transition-all duration-300">
+                                <div className="card-body items-center text-center">
+                                    <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-2">
+                                        <ArrowLeft className="h-6 w-6 text-accent rotate-180" />
+                                    </div>
+                                    <h3 className="card-title text-base font-bold">Chapter Sequence</h3>
+                                    <p className="text-sm text-base-content/70">Verifies proper chapter ordering and numbering</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {/* Status Bar */}
+                        {!selectedFileId && (
+                            <div className="navbar bg-base-100 rounded-box shadow-lg z-10">
+                                <div className="flex-1">
+                                    <button onClick={reset} className="btn btn-ghost gap-2 normal-case text-lg font-medium">
+                                        <ArrowLeft className="h-5 w-5" />
+                                        Upload New Files
+                                    </button>
+                                </div>
+                                <div className="flex-none gap-2">
+                                    <div className="hidden md:flex gap-4 mr-4">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-xs uppercase tracking-wider opacity-70">Files</span>
+                                            <span className="font-bold">{processedFiles.length}</span>
+                                        </div>
+                                        <div className="divider divider-horizontal m-0"></div>
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-xs uppercase tracking-wider opacity-70">Passed</span>
+                                            <span className="font-bold text-success">{passedCount}</span>
+                                        </div>
+                                        <div className="divider divider-horizontal m-0"></div>
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-xs uppercase tracking-wider opacity-70">Avg Score</span>
+                                            <span className={`font-bold ${avgScore >= 80 ? 'text-success' : 'text-warning'}`}>{avgScore}%</span>
+                                        </div>
+                                    </div>
+                                    <button onClick={downloadCSV} className="btn btn-primary btn-sm" disabled={processedFiles.length === 0}>
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Export CSV
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedFileId ? (
+                            <div className="h-[85vh] flex flex-col">
+                                <div className="mb-4">
+                                    <button onClick={() => setSelectedFileId(null)} className="btn btn-sm btn-outline gap-2">
+                                        <ArrowLeft className="h-4 w-4" /> Back to Batch Results
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full overflow-hidden">
+                                    {/* Left Panel: Result Details */}
+                                    <div className="h-full overflow-y-auto pr-2 pb-20">
+                                        {selectedFile && selectedFile.result && (
+                                            <ResultsView
+                                                result={selectedFile.result}
+                                                onClose={() => setSelectedFileId(null)}
+                                            />
+                                        )}
+                                    </div>
+
+                                    {/* Right Panel: Preview */}
+                                    <div className="h-full bg-base-100 rounded-box shadow-lg border border-base-300 overflow-hidden flex flex-col">
+                                        <div className="p-2 bg-base-200 border-b border-base-300 font-medium text-center">
+                                            Document Preview
+                                        </div>
+                                        <div className="flex-1 overflow-auto bg-gray-100 relative">
+                                            {selectedFile && selectedFile.analyzedPages ? (
+                                                <PDFPreview
+                                                    file={selectedFile.file}
+                                                    analyzedPages={selectedFile.analyzedPages}
                                                 />
-                                            </CardContent>
-                                        </Card>
-                                        
-                                        <Card className="md:col-span-3">
-                                            <CardContent className="p-6">
-                                                <div className="grid grid-cols-3 gap-4 text-center">
-                                                    <div>
-                                                        <div className="flex items-center justify-center gap-2 mb-1">
-                                                            <XCircle className="h-5 w-5 text-red-500" />
-                                                            <span className="text-2xl font-bold">{validationResult.errors.length}</span>
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">Errors</p>
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center justify-center gap-2 mb-1">
-                                                            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                                                            <span className="text-2xl font-bold">{validationResult.warnings.length}</span>
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">Warnings</p>
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center justify-center gap-2 mb-1">
-                                                            <FileText className="h-5 w-5 text-blue-500" />
-                                                            <span className="text-2xl font-bold">{validationResult.pageCount}</span>
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground">Pages</p>
-                                                    </div>
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-base-content/50">
+                                                    Preview not available
                                                 </div>
-                                            </CardContent>
-                                        </Card>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="card bg-base-100 shadow-xl">
+                                <div className="card-body p-0">
+                                    <div className="p-6 border-b border-base-200 flex justify-between items-center bg-base-50/50">
+                                        <div>
+                                            <h2 className="card-title">Batch Results</h2>
+                                            <p className="text-sm text-base-content/70">{isProcessing ? 'Processing files...' : 'All files processed'}</p>
+                                        </div>
+                                        {isProcessing && (
+                                            <div className="w-64">
+                                                <div className="flex justify-between text-xs mb-1">
+                                                    <span>Progress</span>
+                                                    <span>{progressPercent}%</span>
+                                                </div>
+                                                <progress className="progress progress-primary w-full" value={progressPercent} max="100"></progress>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Alerts for Critical Issues */}
-                                    {validationResult.errors.length > 0 && (
-                                        <Alert variant="destructive">
-                                            <XCircle className="h-4 w-4" />
-                                            <AlertTitle>Critical Issues Found</AlertTitle>
-                                            <AlertDescription>
-                                                {validationResult.errors.length} error(s) need to be fixed before submission.
-                                            </AlertDescription>
-                                        </Alert>
-                                    )}
-
-                                    {validationResult.watermark?.rrnValidation?.isValid && (
-                                        <Alert variant="success">
-                                            <CheckCircle2 className="h-4 w-4" />
-                                            <AlertTitle>RRN Watermark Verified</AlertTitle>
-                                            <AlertDescription>
-                                                Detected valid RRN: {validationResult.watermark.rrnValidation.detectedRRN}
-                                            </AlertDescription>
-                                        </Alert>
-                                    )}
-
-                                    {/* Main Tabs */}
-                                    <Tabs defaultValue="results" className="w-full">
-                                        <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-6">
-                                            <TabsTrigger value="results" className="gap-2">
-                                                <BarChart3 className="h-4 w-4" />
-                                                Details
-                                            </TabsTrigger>
-                                            <TabsTrigger value="structure" className="gap-2">
-                                                <BookOpen className="h-4 w-4" />
-                                                Structure
-                                            </TabsTrigger>
-                                            <TabsTrigger value="analysis" className="gap-2">
-                                                <FileSearch className="h-4 w-4" />
-                                                Page Analysis
-                                            </TabsTrigger>
-                                            <TabsTrigger value="preview" className="gap-2">
-                                                <Eye className="h-4 w-4" />
-                                                Preview
-                                            </TabsTrigger>
-                                        </TabsList>
-
-                                        <TabsContent value="results">
-                                            <ResultsView result={validationResult} />
-                                        </TabsContent>
-
-                                        <TabsContent value="structure">
-                                            <Card>
-                                                <CardHeader>
-                                                    <CardTitle>Document Structure</CardTitle>
-                                                    <CardDescription>Required sections and their status</CardDescription>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <Accordion type="single" collapsible className="w-full">
-                                                        <AccordionItem value="front-matter">
-                                                            <AccordionTrigger>
-                                                                <span className="flex items-center gap-2">
-                                                                    Front Matter
-                                                                    <Badge variant="outline" className="ml-2">
-                                                                        {[
-                                                                            validationResult.structure.hasCover,
-                                                                            validationResult.structure.hasBonafide,
-                                                                            validationResult.structure.hasCertificate,
-                                                                        ].filter(Boolean).length}/3
-                                                                    </Badge>
-                                                                </span>
-                                                            </AccordionTrigger>
-                                                            <AccordionContent>
-                                                                <div className="space-y-2">
-                                                                    <StructureItem label="Cover Page" checked={validationResult.structure.hasCover} />
-                                                                    <StructureItem label="Bonafide Certificate" checked={validationResult.structure.hasBonafide} />
-                                                                    <StructureItem label="Certificate" checked={validationResult.structure.hasCertificate} />
+                                    <div className="overflow-x-auto h-[600px] w-full">
+                                        <table className="table table-pin-rows">
+                                            <thead>
+                                                <tr className="bg-base-200/50">
+                                                    <th>File Name</th>
+                                                    <th>Status</th>
+                                                    <th>Score</th>
+                                                    <th>Watermark / RRN</th>
+                                                    <th>Analyze</th>
+                                                    <th>Details</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {processedFiles.map((file) => (
+                                                    <tr key={file.id} className="hover">
+                                                        <td>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="avatar placeholder">
+                                                                    <div className="bg-neutral-content text-neutral-content rounded-lg w-8 h-8">
+                                                                        <FileIcon className="w-4 h-4 text-neutral" />
+                                                                    </div>
                                                                 </div>
-                                                            </AccordionContent>
-                                                        </AccordionItem>
-                                                        
-                                                        <AccordionItem value="preliminary">
-                                                            <AccordionTrigger>
-                                                                <span className="flex items-center gap-2">
-                                                                    Preliminary Pages
-                                                                    <Badge variant="outline" className="ml-2">
-                                                                        {[
-                                                                            validationResult.structure.hasAcknowledgment,
-                                                                            validationResult.structure.hasTableOfContents,
-                                                                            validationResult.structure.hasAbstract,
-                                                                        ].filter(Boolean).length}/3
-                                                                    </Badge>
-                                                                </span>
-                                                            </AccordionTrigger>
-                                                            <AccordionContent>
-                                                                <div className="space-y-2">
-                                                                    <StructureItem label="Acknowledgement" checked={validationResult.structure.hasAcknowledgment} />
-                                                                    <StructureItem label="Table of Contents" checked={validationResult.structure.hasTableOfContents} />
-                                                                    <StructureItem label="Abstract" checked={validationResult.structure.hasAbstract} />
-                                                                    <StructureItem label="List of Abbreviations" checked={validationResult.structure.hasAbbreviations} optional />
-                                                                    <StructureItem label="List of Figures" checked={validationResult.structure.hasListOfFigures} optional />
+                                                                <div>
+                                                                    <div className="font-bold max-w-xs truncate" title={file.file.name}>{file.file.name}</div>
+                                                                    <div className="text-xs opacity-50">{(file.file.size / 1024 / 1024).toFixed(2)} MB</div>
                                                                 </div>
-                                                            </AccordionContent>
-                                                        </AccordionItem>
-                                                        
-                                                        <AccordionItem value="body">
-                                                            <AccordionTrigger>
-                                                                <span className="flex items-center gap-2">
-                                                                    Main Content
-                                                                    <Badge variant="outline" className="ml-2">
-                                                                        {[
-                                                                            validationResult.structure.hasIntroduction,
-                                                                            validationResult.structure.hasConclusion,
-                                                                            validationResult.structure.hasReferences,
-                                                                        ].filter(Boolean).length}/3
-                                                                    </Badge>
-                                                                </span>
-                                                            </AccordionTrigger>
-                                                            <AccordionContent>
-                                                                <div className="space-y-2">
-                                                                    <StructureItem label="Introduction (Chapter 1)" checked={validationResult.structure.hasIntroduction} />
-                                                                    <StructureItem label="Conclusion" checked={validationResult.structure.hasConclusion} />
-                                                                    <StructureItem label="References/Bibliography" checked={validationResult.structure.hasReferences} />
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            {file.status === 'processing' && <span className="loading loading-spinner loading-sm text-primary"></span>}
+                                                            {file.status === 'pending' && <span className="badge badge-ghost">Pending</span>}
+                                                            {file.status === 'error' && <span className="badge badge-error text-error-content">Error</span>}
+                                                            {file.status === 'completed' && <span className="badge badge-success text-white">Done</span>}
+                                                        </td>
+                                                        <td>
+                                                            {file.result ? (
+                                                                <div className="flex items-center gap-2">
+                                                                    <div
+                                                                        className={`radial-progress text-xs font-bold ${file.result.score >= 80 ? 'text-success' : file.result.score >= 50 ? 'text-warning' : 'text-error'
+                                                                            }`}
+                                                                        style={{ "--value": file.result.score, "--size": "2.5rem" } as React.CSSProperties}
+                                                                        role="progressbar"
+                                                                    >
+                                                                        {file.result.score}
+                                                                    </div>
                                                                 </div>
-                                                            </AccordionContent>
-                                                        </AccordionItem>
-                                                    </Accordion>
-                                                </CardContent>
-                                            </Card>
-                                        </TabsContent>
-
-                                        <TabsContent value="analysis">
-                                            <div className="min-h-[600px]">
-                                                {analyzedPages.length > 0 && (
-                                                    <PageAnalysisView 
-                                                        file={file} 
-                                                        analyzedPages={analyzedPages}
-                                                    />
-                                                )}
-                                            </div>
-                                        </TabsContent>
-
-                                        <TabsContent value="preview">
-                                            <Card className="overflow-hidden">
-                                                <CardContent className="p-0 h-[600px]">
-                                                    {analyzedPages.length > 0 && (
-                                                        <PDFPreview file={file} analyzedPages={analyzedPages} />
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-                                        </TabsContent>
-                                    </Tabs>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <td>
+                                                            {file.result?.watermark?.rrnValidation?.detectedRRN ? (
+                                                                <div className="badge badge-outline font-mono">{file.result.watermark.rrnValidation.detectedRRN}</div>
+                                                            ) : file.status === 'completed' ? (
+                                                                <span className="text-base-content/30 text-xs italic">Not found</span>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <td>
+                                                            {file.result ? (
+                                                                <div className="flex gap-2">
+                                                                    {file.result.errors.length > 0 && (
+                                                                        <div className="tooltip" data-tip={`${file.result.errors.length} Errors`}>
+                                                                            <span className="badge badge-error badge-sm">{file.result.errors.length}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {file.result.warnings.length > 0 && (
+                                                                        <div className="tooltip" data-tip={`${file.result.warnings.length} Warnings`}>
+                                                                            <span className="badge badge-warning badge-sm">{file.result.warnings.length}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {file.result.errors.length === 0 && file.result.warnings.length === 0 && (
+                                                                        <span className="badge badge-success badge-sm">Perfect</span>
+                                                                    )}
+                                                                </div>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <th>
+                                                            <button
+                                                                className="btn btn-ghost btn-xs"
+                                                                onClick={() => setSelectedFileId(file.id)}
+                                                                disabled={!file.result}
+                                                            >
+                                                                View Report
+                                                            </button>
+                                                        </th>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                            ) : null}
-                        </div>
-                    )}
-                </main>
-
-                <Footer />
-            </div>
-        </TooltipProvider>
-    );
-}
-
-function StructureItem({ label, checked, optional }: { label: string; checked: boolean; optional?: boolean }) {
-    return (
-        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
-            <span className="text-sm">
-                {label}
-                {optional && <span className="text-muted-foreground ml-1">(optional)</span>}
-            </span>
-            {checked ? (
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-            ) : (
-                <XCircle className={`h-4 w-4 ${optional ? 'text-muted-foreground' : 'text-red-500'}`} />
-            )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </main>
+            <Footer />
         </div>
     );
 }

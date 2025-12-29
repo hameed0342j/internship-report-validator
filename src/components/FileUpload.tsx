@@ -1,37 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileText, FileSpreadsheet, CheckCircle2, CloudUpload, Sparkles } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Upload, FileText, FileSpreadsheet, FolderUp, CheckCircle2 } from 'lucide-react';
 
 interface FileUploadProps {
-    onFileSelect: (file: File) => void;
+    onFilesSelect: (files: File[]) => void;
     isProcessing: boolean;
 }
 
-export function FileUpload({ onFileSelect, isProcessing }: FileUploadProps) {
-    const [uploadProgress, setUploadProgress] = useState(0);
+export function FileUpload({ onFilesSelect, isProcessing }: FileUploadProps) {
+    const folderInputRef = useRef<HTMLInputElement>(null);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         if (acceptedFiles.length > 0) {
-            // Simulate upload progress
-            setUploadProgress(0);
-            const interval = setInterval(() => {
-                setUploadProgress(prev => {
-                    if (prev >= 100) {
-                        clearInterval(interval);
-                        return 100;
-                    }
-                    return prev + 20;
-                });
-            }, 100);
-            
-            setTimeout(() => {
-                onFileSelect(acceptedFiles[0]);
-            }, 500);
+            onFilesSelect(acceptedFiles);
         }
-    }, [onFileSelect]);
+    }, [onFilesSelect]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
@@ -40,118 +23,130 @@ export function FileUpload({ onFileSelect, isProcessing }: FileUploadProps) {
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
         },
         disabled: isProcessing,
-        multiple: false,
-        maxSize: 20 * 1024 * 1024 // 20MB
+        multiple: true
     });
 
+    const handleFolderUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || []);
+        if (files.length > 0) {
+            // Filter only PDF and DOCX
+            const validFiles = files.filter(file =>
+                file.name.toLowerCase().endsWith('.pdf') ||
+                file.name.toLowerCase().endsWith('.docx')
+            );
+            if (validFiles.length > 0) {
+                onFilesSelect(validFiles);
+            } else {
+                alert("No PDF or DOCX files found in the selected folder.");
+            }
+        }
+    };
+
     return (
-        <Card className="w-full max-w-2xl mx-auto overflow-hidden shadow-xl border-2 hover:border-primary/50 transition-colors">
-            <CardContent className="p-0">
+        <div className="card bg-base-100 shadow-xl w-full max-w-2xl mx-auto overflow-hidden">
+            <div className="card-body p-0">
                 <div
                     {...getRootProps()}
                     className={`
-                        relative p-10 md:p-16 text-center cursor-pointer transition-all duration-500
-                        ${isDragActive 
-                            ? 'bg-primary/5 scale-[1.02]' 
-                            : 'bg-gradient-to-b from-muted/30 to-transparent hover:from-muted/50'
+                        relative p-12 text-center cursor-pointer transition-all duration-300
+                        border-2 border-dashed rounded-lg m-4
+                        ${isDragActive
+                            ? 'border-primary bg-primary/5 scale-[1.02]'
+                            : 'border-base-300 hover:border-primary/50 hover:bg-base-200/50'
                         }
                         ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
                     `}
                 >
                     <input {...getInputProps()} />
-                    
-                    {/* Background decoration */}
-                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                        <div className={`absolute -top-24 -right-24 w-48 h-48 rounded-full bg-primary/5 blur-3xl transition-opacity duration-500 ${isDragActive ? 'opacity-100' : 'opacity-0'}`} />
-                        <div className={`absolute -bottom-24 -left-24 w-48 h-48 rounded-full bg-blue-500/5 blur-3xl transition-opacity duration-500 ${isDragActive ? 'opacity-100' : 'opacity-0'}`} />
-                    </div>
-                    
+
                     <div className="relative z-10">
                         {isProcessing ? (
-                            <div className="flex flex-col items-center gap-6">
-                                <div className="relative">
-                                    <div className="w-20 h-20 rounded-full border-4 border-muted" />
-                                    <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-t-primary border-r-primary/50 animate-spin" />
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <Sparkles className="h-8 w-8 text-primary animate-pulse" />
-                                    </div>
-                                </div>
+                            <div className="flex flex-col items-center gap-4">
+                                <span className="loading loading-ring loading-lg text-primary"></span>
                                 <div>
-                                    <p className="text-lg font-semibold">Processing Document...</p>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                        Analyzing structure, watermarks, and formatting
+                                    <p className="text-lg font-medium">Analyzing Documents...</p>
+                                    <p className="text-sm text-base-content/70 mt-1">
+                                        Checking structure, watermarks, and formatting
                                     </p>
                                 </div>
-                                <Progress value={uploadProgress} className="w-48 h-2" />
                             </div>
                         ) : (
                             <>
                                 <div className={`
-                                    mx-auto w-20 h-20 rounded-2xl flex items-center justify-center mb-6
-                                    transition-all duration-500 shadow-lg
-                                    ${isDragActive 
-                                        ? 'bg-primary text-primary-foreground scale-110 rotate-3' 
-                                        : 'bg-gradient-to-br from-primary/80 to-primary text-primary-foreground'
+                                    mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4
+                                    transition-all duration-300
+                                    ${isDragActive
+                                        ? 'bg-primary text-primary-content scale-110'
+                                        : 'bg-base-200 text-base-content/70'
                                     }
                                 `}>
-                                    {isDragActive ? (
-                                        <CloudUpload className="h-10 w-10 animate-bounce" />
-                                    ) : (
-                                        <Upload className="h-10 w-10" />
-                                    )}
+                                    <Upload className="h-8 w-8" />
                                 </div>
-                                
-                                <h3 className="text-2xl font-bold mb-3">
-                                    {isDragActive ? 'Drop it here!' : 'Upload Your Report'}
+
+                                <h3 className="text-xl font-semibold mb-2">
+                                    {isDragActive ? 'Drop files or folders here!' : 'Upload Internship Reports'}
                                 </h3>
-                                
-                                <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-                                    {isDragActive 
-                                        ? 'Release to start validation' 
-                                        : 'Drag and drop your internship report, or click to browse your files'
-                                    }
+
+                                <p className="text-base-content/70 mb-4">
+                                    Drag and drop PDF/DOCX files, or click to browse
                                 </p>
-                                
-                                <div className="flex items-center justify-center gap-3 flex-wrap">
-                                    <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-                                        <FileText className="h-4 w-4 text-red-500" />
+
+                                <div className="flex items-center justify-center gap-3 mb-6">
+                                    <div className="badge badge-secondary badge-outline gap-1.5 p-3">
+                                        <FileText className="h-3.5 w-3.5" />
                                         PDF
-                                    </Badge>
-                                    <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-                                        <FileSpreadsheet className="h-4 w-4 text-blue-500" />
+                                    </div>
+                                    <div className="badge badge-secondary badge-outline gap-1.5 p-3">
+                                        <FileSpreadsheet className="h-3.5 w-3.5" />
                                         DOCX
-                                    </Badge>
-                                    <Badge variant="outline" className="gap-1.5 px-3 py-1.5">
-                                        Max 20MB
-                                    </Badge>
+                                    </div>
+                                    <div className="badge badge-outline gap-1.5 p-3">
+                                        Batch Support
+                                    </div>
                                 </div>
                             </>
                         )}
                     </div>
                 </div>
-                
-                {/* Quick features strip */}
-                <div className="px-6 py-4 bg-muted/30 border-t">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            <span className="text-xs text-muted-foreground">Structure</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-1">
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            <span className="text-xs text-muted-foreground">Watermark</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-1">
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            <span className="text-xs text-muted-foreground">RRN Check</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-1">
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            <span className="text-xs text-muted-foreground">Chapters</span>
-                        </div>
+
+                {!isProcessing && (
+                    <div className="px-6 pb-6 text-center">
+                        <div className="divider text-xs uppercase text-base-content/50 my-4">Or</div>
+
+                        <input
+                            type="file"
+                            ref={folderInputRef}
+                            onChange={handleFolderUpload}
+                            className="hidden"
+                            {...({ webkitdirectory: "", directory: "" } as any)}
+                        />
+
+                        <button
+                            className="btn btn-outline w-full gap-2"
+                            onClick={() => folderInputRef.current?.click()}
+                        >
+                            <FolderUp className="h-4 w-4" />
+                            Upload Folder
+                        </button>
+                    </div>
+                )}
+
+                <div className="px-6 pb-6 bg-base-200/50 pt-4 border-t border-base-200">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                        {[
+                            'Structure Validation',
+                            'Watermark Detection',
+                            'RRN Verification',
+                            'Page Count Check'
+                        ].map((feature) => (
+                            <div key={feature} className="flex items-center gap-1.5 text-base-content/70 justify-center md:justify-start">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                                {feature}
+                            </div>
+                        ))}
                     </div>
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

@@ -30,9 +30,6 @@ export interface RRNValidation {
     detectedRRN?: string;
     expectedFormat: string;
     message: string;
-    yearCode?: string;
-    collegeCode?: string;
-    rollNumber?: string;
 }
 
 export interface WatermarkInfo {

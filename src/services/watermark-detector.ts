@@ -1,63 +1,47 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { WatermarkInfo, RRNValidation } from '../types';
-import { extractRRN, validateRRNFormat, REPORT_RULES } from './rules';
 
 // Use unpkg CDN for pdfjs-dist v5 worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.4.449/build/pdf.worker.min.mjs';
 
 export class WatermarkDetector {
     /**
-     * Enhanced RRN validation using rules.ts patterns
+     * Validates RRN format:
      * - Must be 12 digits
-     * - First 2 digits must be between 20-25 (year 2020-2025)
-     * - Digits 3-7 must be college code (17160 or 01716)
-     * - Last 4-5 digits are roll number
+     * - First 2 digits must be between 20-25 (representing years 2020-2025)
      */
     validateRRN(text: string): RRNValidation {
-        // Use the enhanced extraction from rules.ts
-        const extractedRRNs = extractRRN(text);
-        
-        if (!extractedRRNs || extractedRRNs.length === 0) {
+        // Find all 12-digit numbers in the text
+        const rrnPattern = /\b(\d{12})\b/g;
+        const matches = text.match(rrnPattern);
+
+        if (!matches || matches.length === 0) {
             return {
                 isValid: false,
-                expectedFormat: `12 digits (YY${REPORT_RULES.institution.collegeCode}XXXX)`,
+                expectedFormat: '12 digits (e.g., 230171601140)',
                 message: 'No 12-digit RRN found in document'
             };
         }
 
-        // Check each extracted RRN for valid format
-        for (const rrn of extractedRRNs) {
-            const validation = validateRRNFormat(rrn);
-            if (validation.isValid) {
+        // Check each match for valid RRN format
+        for (const match of matches) {
+            const firstTwoDigits = parseInt(match.substring(0, 2), 10);
+            if (firstTwoDigits >= 20 && firstTwoDigits <= 25) {
                 return {
                     isValid: true,
-                    detectedRRN: rrn,
-                    expectedFormat: `12 digits (YY${REPORT_RULES.institution.collegeCode}XXXX)`,
-                    message: `Valid RRN: ${rrn} (Year: 20${validation.year}, College: ${validation.collegeCode}, Roll: ${validation.rollNumber})`,
-                    yearCode: validation.year,
-                    collegeCode: validation.collegeCode,
-                    rollNumber: validation.rollNumber
+                    detectedRRN: match,
+                    expectedFormat: '12 digits starting with 20-25',
+                    message: `Valid RRN detected: ${match}`
                 };
             }
         }
 
-        // Found 12-digit numbers but none with valid format
-        const firstRRN = extractedRRNs[0];
-        const validation = validateRRNFormat(firstRRN);
-        
-        let errorDetails = '';
-        const yearNum = validation.year ? parseInt(validation.year, 10) : 0;
-        if (validation.year && (yearNum < 20 || yearNum > 25)) {
-            errorDetails = `Year code ${validation.year} not in range 20-25`;
-        } else if (validation.collegeCode && validation.collegeCode !== REPORT_RULES.institution.collegeCode && validation.collegeCode !== '01716') {
-            errorDetails = `College code ${validation.collegeCode} doesn't match ${REPORT_RULES.institution.collegeCode}`;
-        }
-
+        // Found 12-digit numbers but none with valid prefix
         return {
             isValid: false,
-            detectedRRN: firstRRN,
-            expectedFormat: `12 digits (YY${REPORT_RULES.institution.collegeCode}XXXX)`,
-            message: `Found ${firstRRN} but invalid format. ${errorDetails}`.trim()
+            detectedRRN: matches[0],
+            expectedFormat: '12 digits starting with 20-25',
+            message: `Found ${matches[0]} but first two digits must be between 20-25`
         };
     }
 

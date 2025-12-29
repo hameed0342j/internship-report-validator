@@ -1,5 +1,4 @@
 import { FileText, Github, Moon, Sun, Monitor } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/ThemeProvider';
 
 export function Header() {
@@ -18,36 +17,37 @@ export function Header() {
     };
 
     return (
-        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-16 items-center justify-between px-4 md:px-6 mx-auto max-w-7xl">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-                        <FileText className="h-5 w-5 text-primary-foreground" />
+        <div className="navbar bg-base-100/95 backdrop-blur sticky top-0 z-50 border-b border-base-200">
+            <div className="flex-1">
+                <div className="flex items-center gap-3 px-2">
+                    <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-primary-content">
+                        <FileText className="h-6 w-6" />
                     </div>
                     <div>
                         <h1 className="text-lg font-bold tracking-tight">Internship Report Validator</h1>
-                        <p className="text-xs text-muted-foreground">B.S. Abdur Rahman Crescent Institute</p>
+                        <p className="text-xs text-base-content/70">B.S. Abdur Rahman Crescent Institute</p>
                     </div>
                 </div>
-                
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={cycleTheme}
-                        title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
-                    >
-                        {getThemeIcon()}
-                        <span className="sr-only">Toggle theme</span>
-                    </Button>
-                    <Button variant="ghost" size="icon" asChild>
-                        <a href="https://github.com" target="_blank" rel="noopener noreferrer">
-                            <Github className="h-4 w-4" />
-                            <span className="sr-only">GitHub</span>
-                        </a>
-                    </Button>
-                </div>
             </div>
-        </header>
+
+            <div className="flex-none gap-2">
+                <button
+                    className="btn btn-ghost btn-circle"
+                    onClick={cycleTheme}
+                    title={`Theme: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
+                >
+                    {getThemeIcon()}
+                </button>
+
+                <a
+                    href="https://github.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-ghost btn-circle"
+                >
+                    <Github className="h-5 w-5" />
+                </a>
+            </div>
+        </div>
     );
 }

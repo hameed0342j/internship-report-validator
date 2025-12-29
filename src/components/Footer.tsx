@@ -1,13 +1,17 @@
-import { Separator } from '@/components/ui/separator';
-
 export function Footer() {
     return (
-        <footer className="border-t bg-muted/50">
-            <div className="container mx-auto max-w-7xl px-4 py-8 md:px-6">
-                <div className="grid gap-8 md:grid-cols-3">
+        <footer className="footer footer-center p-10 bg-base-200 text-base-content rounded">
+            <div className="grid grid-flow-col gap-4">
+                <a className="link link-hover">About us</a>
+                <a className="link link-hover">Contact</a>
+                <a className="link link-hover">Jobs</a>
+                <a className="link link-hover">Press kit</a>
+            </div>
+            <div>
+                <div className="grid gap-8 md:grid-cols-3 text-left w-full max-w-4xl">
                     <div>
-                        <h3 className="font-semibold mb-3">Features</h3>
-                        <ul className="space-y-2 text-sm text-muted-foreground">
+                        <h3 className="footer-title opacity-100 mb-3 text-base">Features</h3>
+                        <ul className="space-y-2 text-sm text-base-content/70">
                             <li>PDF & DOCX Support</li>
                             <li>Structure Validation</li>
                             <li>Watermark Detection</li>
@@ -15,8 +19,8 @@ export function Footer() {
                         </ul>
                     </div>
                     <div>
-                        <h3 className="font-semibold mb-3">Validation Checks</h3>
-                        <ul className="space-y-2 text-sm text-muted-foreground">
+                        <h3 className="footer-title opacity-100 mb-3 text-base">Validation Checks</h3>
+                        <ul className="space-y-2 text-sm text-base-content/70">
                             <li>Cover Page</li>
                             <li>Certificates & Acknowledgment</li>
                             <li>Table of Contents</li>
@@ -24,18 +28,18 @@ export function Footer() {
                         </ul>
                     </div>
                     <div>
-                        <h3 className="font-semibold mb-3">About</h3>
-                        <p className="text-sm text-muted-foreground">
-                            Built for AI&DS students to validate internship reports 
+                        <h3 className="footer-title opacity-100 mb-3 text-base">About</h3>
+                        <p className="text-sm text-base-content/70">
+                            Built for AI&DS students to validate internship reports
                             against institutional formatting requirements.
                         </p>
                     </div>
                 </div>
-                <Separator className="my-6" />
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-                    <p>© 2025 Internship Report Validator. All rights reserved.</p>
-                    <p>Made with ❤️ for AI&DS Students</p>
-                </div>
+            </div>
+            <div className="divider"></div>
+            <div>
+                <p>© 2025 Internship Report Validator. All rights reserved.</p>
+                <p className="text-sm">Made with ❤️ for AI&DS Students</p>
             </div>
         </footer>
     );

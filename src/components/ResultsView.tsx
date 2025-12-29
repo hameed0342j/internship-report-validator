@@ -1,284 +1,279 @@
 import type { ValidationResult } from '../types';
-import { 
-    CheckCircle2, XCircle, AlertTriangle, Shield, FileText,
-    Copy, Download
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { toast } from '@/components/ui/sonner';
+    AlertCircle, CheckCircle, AlertTriangle, Droplets,
+    BookOpen, FileCheck, CircleCheck, CircleX, Info, Fingerprint, XCircle
+} from 'lucide-react';
 
 interface ResultsViewProps {
     result: ValidationResult;
+    onClose?: () => void;
 }
 
 export function ResultsView({ result }: ResultsViewProps) {
-    const copyResultsToClipboard = () => {
-        const text = `
-Internship Report Validation Results
-=====================================
-File: ${result.fileName || 'Unknown'}
-Score: ${result.score}%
-Pages: ${result.pageCount}
-Errors: ${result.errors.length}
-Warnings: ${result.warnings.length}
-
-${result.errors.length > 0 ? `ERRORS:\n${result.errors.map(e => `• ${e}`).join('\n')}` : ''}
-
-${result.warnings.length > 0 ? `WARNINGS:\n${result.warnings.map(w => `• ${w}`).join('\n')}` : ''}
-
-RRN: ${result.watermark?.rrnValidation?.detectedRRN || 'Not found'}
-        `.trim();
-        
-        navigator.clipboard.writeText(text);
-        toast.success('Copied to clipboard!');
+    const getScoreGradient = (score: number) => {
+        if (score >= 90) return 'from-success to-emerald-600';
+        if (score >= 70) return 'from-warning to-orange-500';
+        return 'from-error to-rose-600';
     };
 
-    const downloadResults = () => {
-        const text = JSON.stringify(result, null, 2);
-        const blob = new Blob([text], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `validation-results-${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success('Results downloaded!');
+    const getScoreLabel = (score: number) => {
+        if (score >= 90) return 'Excellent';
+        if (score >= 70) return 'Good';
+        if (score >= 50) return 'Needs Work';
+        return 'Poor';
     };
+
+    const structureLabels: Record<string, string> = {
+        hasCover: 'Cover Page',
+        hasBonafide: 'Bonafide Certificate',
+        hasCertificate: 'Internship Certificate',
+        hasVivaVoce: 'Viva-Voce Record',
+        hasAcknowledgment: 'Acknowledgment',
+        hasTableOfContents: 'Table of Contents',
+        hasAbbreviations: 'Abbreviations',
+        hasListOfFigures: 'List of Figures',
+        hasAbstract: 'Abstract',
+        hasIntroduction: 'Introduction',
+        hasConclusion: 'Conclusion',
+        hasReferences: 'References'
+    };
+
+    const passedChecks = Object.values(result.structure).filter(Boolean).length;
+    const totalChecks = Object.keys(result.structure).length;
+    const structureScore = Math.round((passedChecks / totalChecks) * 100);
 
     return (
-        <div className="space-y-6">
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={copyResultsToClipboard} className="gap-2">
-                    <Copy className="h-4 w-4" />
-                    Copy
-                </Button>
-                <Button variant="outline" size="sm" onClick={downloadResults} className="gap-2">
-                    <Download className="h-4 w-4" />
-                    Export
-                </Button>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-6">
-                {/* Errors Section */}
-                <Card className={result.errors.length > 0 ? 'border-red-200 dark:border-red-900' : ''}>
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-base flex items-center gap-2">
-                                <XCircle className="h-5 w-5 text-red-500" />
-                                Errors
-                            </CardTitle>
-                            <Badge variant={result.errors.length > 0 ? "destructive" : "secondary"}>
-                                {result.errors.length}
-                            </Badge>
-                        </div>
-                        <CardDescription>Issues that must be fixed</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {result.errors.length > 0 ? (
-                            <ScrollArea className="h-[250px] pr-4">
-                                <div className="space-y-3">
-                                    {result.errors.map((error, index) => (
-                                        <div 
-                                            key={index} 
-                                            className="flex gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50"
-                                        >
-                                            <div className="shrink-0 w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center text-xs font-medium text-red-600">
-                                                {index + 1}
-                                            </div>
-                                            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ScrollArea>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-8 text-center">
-                                <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-3">
-                                    <CheckCircle2 className="h-6 w-6 text-green-500" />
-                                </div>
-                                <p className="text-sm font-medium text-green-600 dark:text-green-400">No errors found!</p>
-                                <p className="text-xs text-muted-foreground mt-1">Your document passed all critical checks</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Warnings Section */}
-                <Card className={result.warnings.length > 0 ? 'border-yellow-200 dark:border-yellow-900' : ''}>
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-base flex items-center gap-2">
-                                <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                                Warnings
-                            </CardTitle>
-                            <Badge variant="secondary" className={result.warnings.length > 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : ''}>
-                                {result.warnings.length}
-                            </Badge>
-                        </div>
-                        <CardDescription>Suggestions for improvement</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {result.warnings.length > 0 ? (
-                            <ScrollArea className="h-[250px] pr-4">
-                                <div className="space-y-3">
-                                    {result.warnings.map((warning, index) => (
-                                        <div 
-                                            key={index} 
-                                            className="flex gap-3 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-100 dark:border-yellow-900/50"
-                                        >
-                                            <div className="shrink-0 w-6 h-6 rounded-full bg-yellow-100 dark:bg-yellow-900/50 flex items-center justify-center text-xs font-medium text-yellow-600">
-                                                {index + 1}
-                                            </div>
-                                            <p className="text-sm text-yellow-700 dark:text-yellow-300">{warning}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ScrollArea>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-8 text-center">
-                                <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-3">
-                                    <CheckCircle2 className="h-6 w-6 text-green-500" />
-                                </div>
-                                <p className="text-sm font-medium text-green-600 dark:text-green-400">No warnings!</p>
-                                <p className="text-xs text-muted-foreground mt-1">Everything looks great</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Watermark Details */}
-            {result.watermark && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <Shield className="h-5 w-5 text-blue-500" />
-                            Watermark Analysis
-                        </CardTitle>
-                        <CardDescription>RRN and watermark detection results</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="rounded-lg border overflow-hidden">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-muted/50">
-                                        <TableHead className="font-medium">Property</TableHead>
-                                        <TableHead className="font-medium">Value</TableHead>
-                                        <TableHead className="font-medium">Status</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    <TableRow>
-                                        <TableCell className="font-medium">Watermark Detected</TableCell>
-                                        <TableCell>{result.watermark.hasWatermark ? 'Yes' : 'No'}</TableCell>
-                                        <TableCell>
-                                            {result.watermark.hasWatermark ? (
-                                                <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                    Found
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                                    <XCircle className="h-3 w-3 mr-1" />
-                                                    Missing
-                                                </Badge>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell className="font-medium">RRN Number</TableCell>
-                                        <TableCell className="font-mono">
-                                            {result.watermark.rrnValidation?.detectedRRN || 'Not detected'}
-                                        </TableCell>
-                                        <TableCell>
-                                            {result.watermark.rrnValidation?.isValid ? (
-                                                <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                    Valid
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                                    <XCircle className="h-3 w-3 mr-1" />
-                                                    Invalid
-                                                </Badge>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell className="font-medium">Confidence</TableCell>
-                                        <TableCell>{result.watermark.confidence}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className={
-                                                result.watermark.confidence === 'HIGH' 
-                                                    ? 'border-green-500 text-green-600' 
-                                                    : result.watermark.confidence === 'MEDIUM'
-                                                        ? 'border-yellow-500 text-yellow-600'
-                                                        : 'border-red-500 text-red-600'
-                                            }>
-                                                {result.watermark.confidence}
-                                            </Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell className="font-medium">Pages with Watermark</TableCell>
-                                        <TableCell>{result.watermark.watermarkPages.length} pages</TableCell>
-                                        <TableCell>
-                                            <span className="text-xs text-muted-foreground">
-                                                {result.watermark.watermarkPages.slice(0, 5).join(', ')}
-                                                {result.watermark.watermarkPages.length > 5 && '...'}
-                                            </span>
-                                        </TableCell>
-                                    </TableRow>
-                                </TableBody>
-                            </Table>
-                        </div>
-                        
-                        {result.watermark.rrnValidation && (
-                            <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm">
-                                <p className="text-muted-foreground">
-                                    <strong>RRN Format:</strong> {result.watermark.rrnValidation.expectedFormat}
-                                </p>
-                                <p className="text-muted-foreground mt-1">
-                                    <strong>Message:</strong> {result.watermark.rrnValidation.message}
-                                </p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* Quick Summary */}
-            <Card className="bg-gradient-to-br from-muted/50 to-muted/30">
-                <CardContent className="p-6">
-                    <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                            <FileText className="h-5 w-5 text-primary" />
-                        </div>
+        <div className="w-full space-y-6">
+            {/* Score Card */}
+            <div className="card bg-base-100 shadow-xl overflow-hidden">
+                <div className={`bg-gradient-to-r ${getScoreGradient(result.score)} p-8 text-white`}>
+                    <div className="flex items-center justify-between">
                         <div>
-                            <h4 className="font-semibold mb-1">Validation Summary</h4>
-                            <p className="text-sm text-muted-foreground">
-                                Your document "{result.fileName}" has been analyzed. 
-                                {result.score >= 80 
-                                    ? " Great work! Your report meets most requirements."
-                                    : result.score >= 50
-                                        ? " There are some issues that need attention before submission."
-                                        : " Please review the errors above and make necessary corrections."
-                                }
+                            <p className="text-white/80 text-sm font-medium mb-1">Validation Score</p>
+                            <div className="flex items-baseline gap-3">
+                                <span className="text-6xl font-bold">{result.score}</span>
+                                <span className="text-2xl text-white/70">/100</span>
+                            </div>
+                            <p className="mt-2 text-lg font-medium text-white/90">
+                                {getScoreLabel(result.score)}
                             </p>
                         </div>
+                        <div className="text-right">
+                            <FileCheck className="h-16 w-16 text-white/30" />
+                            {result.fileName && (
+                                <p className="text-sm text-white/70 mt-2 max-w-[200px] truncate">
+                                    {result.fileName}
+                                </p>
+                            )}
+                            <p className="text-xs text-white/60">{result.pageCount} pages</p>
+                        </div>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+
+                <div className="card-body p-4">
+                    <div className="grid grid-cols-4 gap-4 text-center">
+                        <div className="space-y-1">
+                            <div className="text-2xl font-bold text-success">{passedChecks}</div>
+                            <div className="text-xs text-base-content/70">Passed</div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-2xl font-bold text-error">{totalChecks - passedChecks}</div>
+                            <div className="text-xs text-base-content/70">Failed</div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-2xl font-bold text-warning">{result.warnings.length}</div>
+                            <div className="text-xs text-base-content/70">Warnings</div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-2xl font-bold text-error">{result.errors.length}</div>
+                            <div className="text-xs text-base-content/70">Errors</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Detailed Results Tabs */}
+            <div role="tablist" className="tabs tabs-lifted tabs-lg">
+                <input type="radio" name="results_tabs" role="tab" className="tab min-w-[120px]" aria-label="Structure" defaultChecked />
+                <div role="tabpanel" className="tab-content bg-base-100 border-base-300 rounded-box p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="tex-lg font-bold flex items-center gap-2">
+                            <BookOpen className="h-5 w-5" />
+                            Document Structure
+                        </h3>
+                        <div className={`badge ${structureScore >= 80 ? 'badge-success' : structureScore >= 60 ? 'badge-warning' : 'badge-error'} gap-2`}>
+                            {structureScore}% Complete
+                        </div>
+                    </div>
+                    <progress className="progress progress-primary w-full mb-6" value={structureScore} max="100"></progress>
+
+                    <div className="h-[300px] overflow-y-auto pr-2 grid gap-2">
+                        {Object.entries(result.structure).map(([key, valid]) => (
+                            <div
+                                key={key}
+                                className={`
+                                    flex items-center justify-between p-3 rounded-lg border
+                                    ${valid
+                                        ? 'bg-success/10 border-success/20'
+                                        : 'bg-error/10 border-error/20'
+                                    }
+                                `}
+                            >
+                                <div className="flex items-center gap-3">
+                                    {valid ? (
+                                        <CircleCheck className="h-5 w-5 text-success" />
+                                    ) : (
+                                        <CircleX className="h-5 w-5 text-error" />
+                                    )}
+                                    <span className="font-medium">
+                                        {structureLabels[key] || key.replace('has', '').replace(/([A-Z])/g, ' $1').trim()}
+                                    </span>
+                                </div>
+                                <div className={`badge ${valid ? 'badge-success badge-outline' : 'badge-error badge-outline'}`}>
+                                    {valid ? 'Found' : 'Missing'}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <input type="radio" name="results_tabs" role="tab" className="tab min-w-[120px]" aria-label="Watermark" />
+                <div role="tabpanel" className="tab-content bg-base-100 border-base-300 rounded-box p-6">
+                    <h3 className="text-lg font-bold flex items-center gap-2 mb-4">
+                        <Droplets className="h-5 w-5" />
+                        Watermark & RRN Detection
+                    </h3>
+                    {result.watermark ? (
+                        <div className="space-y-4">
+                            <div className={`
+                                p-4 rounded-lg flex items-center gap-4
+                                ${result.watermark.hasWatermark
+                                    ? 'bg-success/10 border border-success/20'
+                                    : 'bg-warning/10 border border-warning/20'
+                                }
+                            `}>
+                                {result.watermark.hasWatermark ? (
+                                    <CheckCircle className="h-8 w-8 text-success" />
+                                ) : (
+                                    <AlertTriangle className="h-8 w-8 text-warning" />
+                                )}
+                                <div>
+                                    <p className="font-semibold">
+                                        {result.watermark.hasWatermark ? 'Watermark Detected' : 'No Watermark Found'}
+                                    </p>
+                                    <p className="text-sm text-base-content/70">
+                                        {result.watermark.hasWatermark
+                                            ? `Found on ${result.watermark.watermarkPages.length} page(s)`
+                                            : 'Document may not have proper authentication'
+                                        }
+                                    </p>
+                                </div>
+                                {result.watermark.hasWatermark && (
+                                    <div className="badge ml-auto">
+                                        {result.watermark.confidence} Confidence
+                                    </div>
+                                )}
+                            </div>
+
+                            {result.watermark.rrnValidation && (
+                                <div className={`
+                                    p-4 rounded-lg border
+                                    ${result.watermark.rrnValidation.isValid
+                                        ? 'bg-info/10 border-info/20'
+                                        : 'bg-error/10 border-error/20'
+                                    }
+                                `}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <Fingerprint className={`h-5 w-5 ${result.watermark.rrnValidation.isValid ? 'text-info' : 'text-error'}`} />
+                                        <span className="font-semibold">RRN Validation</span>
+                                        <div className={`badge ${result.watermark.rrnValidation.isValid ? 'badge-info' : 'badge-ghost'}`}>
+                                            {result.watermark.rrnValidation.isValid ? 'Valid' : 'Invalid'}
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-base-content/70 ml-8">
+                                        {result.watermark.rrnValidation.message}
+                                    </p>
+                                    {result.watermark.rrnValidation.detectedRRN && (
+                                        <p className="text-sm font-mono mt-2 ml-8 p-2 bg-base-200 rounded">
+                                            Detected: <span className="text-primary font-bold">{result.watermark.rrnValidation.detectedRRN}</span>
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {result.watermark.watermarkText && (
+                                <>
+                                    <div className="divider"></div>
+                                    <div className="flex items-center justify-between p-3 bg-base-200 rounded-lg">
+                                        <span className="text-sm">Watermark Text</span>
+                                        <code className="text-xs bg-base-100 px-2 py-1 rounded border">
+                                            {result.watermark.watermarkText}
+                                        </code>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-base-content/50">
+                            <Droplets className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                            <p>Watermark analysis not available</p>
+                        </div>
+                    )}
+                </div>
+
+                <input type="radio" name="results_tabs" role="tab" className="tab min-w-[120px]" aria-label={`Issues ${result.errors.length + result.warnings.length > 0 ? `(${result.errors.length + result.warnings.length})` : ''}`} />
+                <div role="tabpanel" className="tab-content bg-base-100 border-base-300 rounded-box p-6 space-y-6">
+                    <div>
+                        <h3 className="text-lg font-bold flex items-center gap-2 text-error mb-4">
+                            <AlertCircle className="h-5 w-5" />
+                            Critical Issues
+                            {result.errors.length > 0 && (
+                                <div className="badge badge-error text-white">{result.errors.length}</div>
+                            )}
+                        </h3>
+                        {result.errors.length > 0 ? (
+                            <div className="h-[150px] overflow-y-auto pr-2 space-y-2">
+                                {result.errors.map((error, idx) => (
+                                    <div role="alert" key={idx} className="alert alert-error">
+                                        <XCircle className="h-6 w-6" />
+                                        <span>{error}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-6 text-base-content/50">
+                                <CheckCircle className="h-10 w-10 mx-auto mb-2 text-success" />
+                                <p>No critical issues found!</p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <h3 className="text-lg font-bold flex items-center gap-2 text-warning mb-4">
+                            <AlertTriangle className="h-5 w-5" />
+                            Warnings
+                            {result.warnings.length > 0 && (
+                                <div className="badge badge-warning">{result.warnings.length}</div>
+                            )}
+                        </h3>
+                        {result.warnings.length > 0 ? (
+                            <div className="h-[150px] overflow-y-auto pr-2 space-y-2">
+                                {result.warnings.map((warning, idx) => (
+                                    <div key={idx} className="flex items-start gap-3 p-3 bg-warning/10 rounded-lg border border-warning/20">
+                                        <Info className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+                                        <span className="text-sm">{warning}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-6 text-base-content/50">
+                                <CheckCircle className="h-10 w-10 mx-auto mb-2 text-success" />
+                                <p>No warnings!</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
